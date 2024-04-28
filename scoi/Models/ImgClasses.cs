@@ -329,242 +329,7 @@ namespace scoi.Models
         }
 
 
-        public static (Bitmap, Bitmap, Bitmap) Furier(
-            JobTask job,
-            Bitmap input, 
-            int filter_type,
-            string filter, 
-            double in_filter_zone=1.0, 
-            double out_filter_zone=0.0, 
-            double furier_multiplyer = 1.0
-            )
-        {
-            int width = input.Width;
-            int height = input.Height;
-            
-            int new_width = width;
-            int new_height = height;
-            
-            var p = Math.Log2(width);
-            if (p != Math.Floor(p))
-                new_width = (int)Math.Pow(2, Math.Ceiling(p));
-            p = Math.Log2(height);
-            if (p != Math.Floor(p))
-                new_height = (int)Math.Pow(2, Math.Ceiling(p));
-
-            using Bitmap _tmp = new Bitmap(new_width, new_height, PixelFormat.Format24bppRgb);
-            _tmp.SetResolution(input.HorizontalResolution, input.VerticalResolution);
-
-            byte[] new_bytes = new byte[new_width * new_height * 3];
-            byte[] furier_ma_bytes = new byte[new_width * new_height * 3];
-            byte[] filter_bytes = new byte[new_width * new_height * 3];
-
-            using Graphics g = Graphics.FromImage(_tmp);
-            g.DrawImageUnscaled(input, 0, 0);
-
-            byte[] old_bytes = getImgBytes(_tmp);
-
-
-            var ss = StringSplitOptions.RemoveEmptyEntries;
-            var filter_params_strings = filter.Split("\n", ss);
-            filter_params_strings = (from s in filter_params_strings where (s.Trim() != string.Empty) select s).ToArray();
-            var cult = new CultureInfo("en-US");
-            var filter_params_double = filter_params_strings.Select(a=> a.Split(";", ss)
-                .Select(b=>Convert.ToDouble(b.Trim(),cult)).ToArray() ).ToArray();
-
-
-            if (job != null) job.operations_count = 6;
-
-            Complex[] complex_bytes = new Complex[new_width * new_height];
-            
-            for (int color = 0; color <= 2; color++)
-            {
-                
-                for (int i = 0; i < new_width * new_height; ++i)
-                {
-                    int y = i / new_width;
-                    int x = i - y * new_width;
-                    complex_bytes[i] = Math.Pow(-1,x+y)*old_bytes[i * 3 + color];
-                }
-
-
-                complex_bytes = FFT.ditfft2d(complex_bytes, new_width, new_height);
-                if (job != null) job.incrementProgress();
-
-
-                var max_ma = complex_bytes.Max(x => F( x.Imaginary ) );
-
-                Complex[] complex_bytes_filtered = null;
-
-
-                if (filter_type == 0) //идеальный
-                {
-                    complex_bytes_filtered = complex_bytes.Select((a, i) =>
-                    {
-                        int y = i / new_width;
-                        int x = i - y * new_width;
-                        y -= new_height / 2;
-                        x -= new_width / 2;
-
-
-                        foreach (var v in filter_params_double)
-                        {
-                            if ((x - v[0]) * (x - v[0]) + (y - v[1]) * (y - v[1]) >= v[2] * v[2] &&
-                                (x - v[0]) * (x - v[0]) + (y - v[1]) * (y - v[1]) <= v[3] * v[3])
-                            {
-                                filter_bytes[i * 3 + color] = clmp(255 * in_filter_zone);
-                                return a * in_filter_zone;
-                            }
-                                
-                        }
-                        filter_bytes[i * 3 + color] = clmp(255 * out_filter_zone);
-                        return a * out_filter_zone;
-
-                    }).ToArray();
-                }
-                else 
-                if (filter_type == 1) //Баттерворта ФНЧ
-                {
-                    complex_bytes_filtered = complex_bytes.Select((a, i) =>
-                    {
-                        var val = filter_params_double.Select(v =>
-                        {
-                            int y = i / new_width;
-                            int x = i - y * new_width;
-                            y -= new_height / 2;
-                            x -= new_width / 2;
-
-                            double wc = 0.5 * v[3] - 0.5 * v[2];
-                            double h = v[3] - wc;
-                            double b = Butter(x, y, wc, (int)out_filter_zone, v[0], v[1], in_filter_zone,h);
-                            return b;
-                        }).Max();
-                        filter_bytes[i*3+color] = clmp(255 * val);
-                        return a * val;
-                    }).ToArray();
-                }
-                else if (filter_type == 2)          //Баттерворта ФВЧ
-                {
-                    complex_bytes_filtered = complex_bytes.Select((a, i) =>
-                    {
-                        var val = filter_params_double.Select(v =>
-                        {
-                            int y = i / new_width;
-                            int x = i - y * new_width;
-                            y -= new_height / 2;
-                            x -= new_width / 2;
-
-                            double wc = 0.5 * v[3] - 0.5 * v[2];
-                            double h = v[3] - wc;
-                            double b = in_filter_zone - Butter(x, y, wc, (int)out_filter_zone, v[0], v[1], in_filter_zone,h);
-                            return b;
-                        }).Min();
-                        filter_bytes[i * 3 + color] = clmp(255 * val);
-                        return a * val;
-                    }).ToArray();
-                }
-                else if (filter_type == 3)  //Гаусса ФНЧ
-                {
-                    complex_bytes_filtered = complex_bytes.Select((a, i) =>
-                    {
-                        var val = filter_params_double.Select(v =>
-                        {
-                            int y = i / new_width;
-                            int x = i - y * new_width;
-                            y -= new_height / 2;
-                            x -= new_width / 2;
-                            double wc = 0.5 * v[3] - 0.5 * v[2];
-                            double h = v[3] - wc;
-                            double b = Gauss(x, y, wc,  v[0], v[1], in_filter_zone, h);
-                            return b;
-                        }).Max();
-                        filter_bytes[i * 3 + color] = clmp(255 * val);
-                        return a * val;
-                    }).ToArray();
-                }
-                else if (filter_type == 4) //Гаусса ФВЧ
-                {
-                    complex_bytes_filtered = complex_bytes.Select((a, i) =>
-                    {
-
-                        var val = filter_params_double.Select(v =>
-                        {
-                            int y = i / new_width;
-                            int x = i - y * new_width;
-                            y -= new_height / 2;
-                            x -= new_width / 2;
-                            double wc = 0.5 * v[3] - 0.5 * v[2];
-                            double h = v[3] - wc;
-                            double b = in_filter_zone - Gauss(x, y, wc, v[0], v[1], in_filter_zone, h);
-                            return b;
-                        }).Min();
-                        filter_bytes[i * 3 + color] = clmp(255 * val);
-                        return a * val;
-                    }).ToArray();
-                }
-
-
-                var complex_bytes_result = FFT.ditifft2d(complex_bytes_filtered, new_width, new_height);
-
-                for (int i = 0; i < new_width * new_height; ++i)
-                {
-                    int y = i / new_width;
-                    int x = i - y * new_width;
-                    y -= new_height / 2;
-                    x -= new_width / 2;
-                    new_bytes[i * 3 + color] = clmp(Math.Round( (Math.Pow(-1,x+y) * complex_bytes_result[i]).Real));
-                    furier_ma_bytes[i * 3 + color] = clmp(furier_multiplyer * F(complex_bytes[i].Magnitude)*255/max_ma );
-                }
-                if (job != null) job.incrementProgress();
-            }
-
-            //Вывод коэф. преобразования в *.csv
-            /*using StreamWriter sw = new StreamWriter("fur.csv");
-            for (int i = 0; i < height; ++i)
-            {
-                for (int j = 0; j < new_width; ++j)
-                {
-                    sw.Write("\""+ spec_re[i*new_width+j].ToString() + "\",");
-                }
-
-                sw.Write("\n");
-            }
-            sw.Close();
-           */
-           
-            //формируем восстановленное изображение
-            using Bitmap new_bitmap = new Bitmap(new_width, new_height, PixelFormat.Format24bppRgb);
-            new_bitmap.SetResolution(input.HorizontalResolution, input.VerticalResolution);
-            writeImageBytes(new_bitmap,new_bytes);
-
-            //рисуем восстановленное изображение на новом, размер которого совпадает с исходным
-            //так как размер восстановленного может отличатся (степени двойки)
-            Bitmap new_bitamp_ret = new Bitmap(width,height, PixelFormat.Format24bppRgb);
-            new_bitamp_ret.SetResolution(input.HorizontalResolution, input.VerticalResolution);
-            using (Graphics g1 = Graphics.FromImage(new_bitamp_ret))
-            {
-                g1.DrawImageUnscaled(new_bitmap,0,0);
-            }
-
-            //рисуем Фурье-образ и рисуем на нем оверлеи.
-            Bitmap new_bitmap_re = new Bitmap(new_width, new_height, PixelFormat.Format24bppRgb);
-            new_bitmap_re.SetResolution(input.HorizontalResolution, input.VerticalResolution);
-            writeImageBytes(new_bitmap_re, furier_ma_bytes);
-            using var g_fur = Graphics.FromImage(new_bitmap_re);
-            foreach (var v in filter_params_double)
-            {
-                g_fur.DrawEllipse(Pens.GreenYellow, (int)v[0] - (int)v[2] + new_width / 2, (int)v[1] - (int)v[2] + new_height /2, (int)v[2] * 2, (int)v[2] * 2);
-                g_fur.DrawEllipse(Pens.GreenYellow, (int)v[0] - (int)v[3] + new_width / 2, (int)v[1] - (int)v[3] + new_height / 2, (int)v[3] * 2, (int)v[3] * 2);
-            }
-
-            //рисуем маску фильтра
-            Bitmap new_bitmap_mask = new Bitmap(new_width, new_height, PixelFormat.Format24bppRgb);
-            new_bitmap_mask.SetResolution(input.HorizontalResolution, input.VerticalResolution);
-            writeImageBytes(new_bitmap_mask,filter_bytes);
-
-            return (new_bitamp_ret, new_bitmap_re, new_bitmap_mask);
-
-        }
+       
 
         //https://ru.wikipedia.org/wiki/%D0%9C%D0%B5%D1%82%D0%BE%D0%B4_%D0%9E%D1%86%D1%83
         public static Bitmap BinaryzationOtsu(Bitmap input)
@@ -1216,7 +981,243 @@ namespace scoi.Models
             return input;
         }
 
-        
+        public static (Bitmap, Bitmap, Bitmap) Furier(
+           JobTask job,
+           Bitmap input,
+           int filter_type,
+           string filter,
+           double in_filter_zone = 1.0,
+           double out_filter_zone = 0.0,
+           double furier_multiplyer = 1.0
+           )
+        {
+            int width = input.Width;
+            int height = input.Height;
+
+            int new_width = width;
+            int new_height = height;
+
+            var p = Math.Log2(width);
+            if (p != Math.Floor(p))
+                new_width = (int)Math.Pow(2, Math.Ceiling(p));
+            p = Math.Log2(height);
+            if (p != Math.Floor(p))
+                new_height = (int)Math.Pow(2, Math.Ceiling(p));
+
+            using Bitmap _tmp = new Bitmap(new_width, new_height, PixelFormat.Format24bppRgb);
+            _tmp.SetResolution(input.HorizontalResolution, input.VerticalResolution);
+
+            byte[] new_bytes = new byte[new_width * new_height * 3];
+            byte[] furier_ma_bytes = new byte[new_width * new_height * 3];
+            byte[] filter_bytes = new byte[new_width * new_height * 3];
+
+            using Graphics g = Graphics.FromImage(_tmp);
+            g.DrawImageUnscaled(input, 0, 0);
+
+            byte[] old_bytes = getImgBytes(_tmp);
+
+
+            var ss = StringSplitOptions.RemoveEmptyEntries;
+            var filter_params_strings = filter.Split("\n", ss);
+            filter_params_strings = (from s in filter_params_strings where (s.Trim() != string.Empty) select s).ToArray();
+            var cult = new CultureInfo("en-US");
+            var filter_params_double = filter_params_strings.Select(a => a.Split(";", ss)
+                .Select(b => Convert.ToDouble(b.Trim(), cult)).ToArray()).ToArray();
+
+
+            if (job != null) job.operations_count = 6;
+
+            Complex[] complex_bytes = new Complex[new_width * new_height];
+
+            for (int color = 0; color <= 2; color++)
+            {
+
+                for (int i = 0; i < new_width * new_height; ++i)
+                {
+                    int y = i / new_width;
+                    int x = i - y * new_width;
+                    complex_bytes[i] = Math.Pow(-1, x + y) * old_bytes[i * 3 + color];
+                }
+
+
+                complex_bytes = FFT.ditfft2d(complex_bytes, new_width, new_height);
+                if (job != null) job.incrementProgress();
+
+
+                var max_ma = complex_bytes.Max(x => F(x.Imaginary));
+
+                Complex[] complex_bytes_filtered = null;
+
+
+                if (filter_type == 0) //идеальный
+                {
+                    complex_bytes_filtered = complex_bytes.Select((a, i) =>
+                    {
+                        int y = i / new_width;
+                        int x = i - y * new_width;
+                        y -= new_height / 2;
+                        x -= new_width / 2;
+
+
+                        foreach (var v in filter_params_double)
+                        {
+                            if ((x - v[0]) * (x - v[0]) + (y - v[1]) * (y - v[1]) >= v[2] * v[2] &&
+                                (x - v[0]) * (x - v[0]) + (y - v[1]) * (y - v[1]) <= v[3] * v[3])
+                            {
+                                filter_bytes[i * 3 + color] = clmp(255 * in_filter_zone);
+                                return a * in_filter_zone;
+                            }
+
+                        }
+                        filter_bytes[i * 3 + color] = clmp(255 * out_filter_zone);
+                        return a * out_filter_zone;
+
+                    }).ToArray();
+                }
+                else
+                if (filter_type == 1) //Баттерворта ФНЧ
+                {
+                    complex_bytes_filtered = complex_bytes.Select((a, i) =>
+                    {
+                        var val = filter_params_double.Select(v =>
+                        {
+                            int y = i / new_width;
+                            int x = i - y * new_width;
+                            y -= new_height / 2;
+                            x -= new_width / 2;
+
+                            double wc = 0.5 * v[3] - 0.5 * v[2];
+                            double h = v[3] - wc;
+                            double b = Butter(x, y, wc, (int)out_filter_zone, v[0], v[1], in_filter_zone, h);
+                            return b;
+                        }).Max();
+                        filter_bytes[i * 3 + color] = clmp(255 * val);
+                        return a * val;
+                    }).ToArray();
+                }
+                else if (filter_type == 2)          //Баттерворта ФВЧ
+                {
+                    complex_bytes_filtered = complex_bytes.Select((a, i) =>
+                    {
+                        var val = filter_params_double.Select(v =>
+                        {
+                            int y = i / new_width;
+                            int x = i - y * new_width;
+                            y -= new_height / 2;
+                            x -= new_width / 2;
+
+                            double wc = 0.5 * v[3] - 0.5 * v[2];
+                            double h = v[3] - wc;
+                            double b = in_filter_zone - Butter(x, y, wc, (int)out_filter_zone, v[0], v[1], in_filter_zone, h);
+                            return b;
+                        }).Min();
+                        filter_bytes[i * 3 + color] = clmp(255 * val);
+                        return a * val;
+                    }).ToArray();
+                }
+                else if (filter_type == 3)  //Гаусса ФНЧ
+                {
+                    complex_bytes_filtered = complex_bytes.Select((a, i) =>
+                    {
+                        var val = filter_params_double.Select(v =>
+                        {
+                            int y = i / new_width;
+                            int x = i - y * new_width;
+                            y -= new_height / 2;
+                            x -= new_width / 2;
+                            double wc = 0.5 * v[3] - 0.5 * v[2];
+                            double h = v[3] - wc;
+                            double b = Gauss(x, y, wc, v[0], v[1], in_filter_zone, h);
+                            return b;
+                        }).Max();
+                        filter_bytes[i * 3 + color] = clmp(255 * val);
+                        return a * val;
+                    }).ToArray();
+                }
+                else if (filter_type == 4) //Гаусса ФВЧ
+                {
+                    complex_bytes_filtered = complex_bytes.Select((a, i) =>
+                    {
+
+                        var val = filter_params_double.Select(v =>
+                        {
+                            int y = i / new_width;
+                            int x = i - y * new_width;
+                            y -= new_height / 2;
+                            x -= new_width / 2;
+                            double wc = 0.5 * v[3] - 0.5 * v[2];
+                            double h = v[3] - wc;
+                            double b = in_filter_zone - Gauss(x, y, wc, v[0], v[1], in_filter_zone, h);
+                            return b;
+                        }).Min();
+                        filter_bytes[i * 3 + color] = clmp(255 * val);
+                        return a * val;
+                    }).ToArray();
+                }
+
+
+                var complex_bytes_result = FFT.ditifft2d(complex_bytes_filtered, new_width, new_height);
+
+                for (int i = 0; i < new_width * new_height; ++i)
+                {
+                    int y = i / new_width;
+                    int x = i - y * new_width;
+                    y -= new_height / 2;
+                    x -= new_width / 2;
+                    new_bytes[i * 3 + color] = clmp(Math.Round((Math.Pow(-1, x + y) * complex_bytes_result[i]).Real));
+                    furier_ma_bytes[i * 3 + color] = clmp(furier_multiplyer * F(complex_bytes[i].Magnitude) * 255 / max_ma);
+                }
+                if (job != null) job.incrementProgress();
+            }
+
+            //Вывод коэф. преобразования в *.csv
+            /*using StreamWriter sw = new StreamWriter("fur.csv");
+            for (int i = 0; i < height; ++i)
+            {
+                for (int j = 0; j < new_width; ++j)
+                {
+                    sw.Write("\""+ spec_re[i*new_width+j].ToString() + "\",");
+                }
+
+                sw.Write("\n");
+            }
+            sw.Close();
+           */
+
+            //формируем восстановленное изображение
+            using Bitmap new_bitmap = new Bitmap(new_width, new_height, PixelFormat.Format24bppRgb);
+            new_bitmap.SetResolution(input.HorizontalResolution, input.VerticalResolution);
+            writeImageBytes(new_bitmap, new_bytes);
+
+            //рисуем восстановленное изображение на новом, размер которого совпадает с исходным
+            //так как размер восстановленного может отличатся (степени двойки)
+            Bitmap new_bitamp_ret = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+            new_bitamp_ret.SetResolution(input.HorizontalResolution, input.VerticalResolution);
+            using (Graphics g1 = Graphics.FromImage(new_bitamp_ret))
+            {
+                g1.DrawImageUnscaled(new_bitmap, 0, 0);
+            }
+
+            //рисуем Фурье-образ и рисуем на нем оверлеи.
+            Bitmap new_bitmap_re = new Bitmap(new_width, new_height, PixelFormat.Format24bppRgb);
+            new_bitmap_re.SetResolution(input.HorizontalResolution, input.VerticalResolution);
+            writeImageBytes(new_bitmap_re, furier_ma_bytes);
+            using var g_fur = Graphics.FromImage(new_bitmap_re);
+            foreach (var v in filter_params_double)
+            {
+                g_fur.DrawEllipse(Pens.GreenYellow, (int)v[0] - (int)v[2] + new_width / 2, (int)v[1] - (int)v[2] + new_height / 2, (int)v[2] * 2, (int)v[2] * 2);
+                g_fur.DrawEllipse(Pens.GreenYellow, (int)v[0] - (int)v[3] + new_width / 2, (int)v[1] - (int)v[3] + new_height / 2, (int)v[3] * 2, (int)v[3] * 2);
+            }
+
+            //рисуем маску фильтра
+            Bitmap new_bitmap_mask = new Bitmap(new_width, new_height, PixelFormat.Format24bppRgb);
+            new_bitmap_mask.SetResolution(input.HorizontalResolution, input.VerticalResolution);
+            writeImageBytes(new_bitmap_mask, filter_bytes);
+
+            return (new_bitamp_ret, new_bitmap_re, new_bitmap_mask);
+
+        }
+
     }
 
 

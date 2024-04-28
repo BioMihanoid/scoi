@@ -13,55 +13,23 @@ using scoi.Models;
 using System.IO;
 using System.Text.Json;
 using System.Text;
+using System.Diagnostics;
 
 namespace scoi.Controllers
 {
-    public class MainController : Controller
+    public class MainController : ViewController
     {
         private readonly IWebHostEnvironment _hostingEnvironment;
         private static readonly TaskDictionary dictionary = new TaskDictionary();
-        private static string js_comon_version = "1";
         public MainController(IWebHostEnvironment hostingEnvironment)
         {
             _hostingEnvironment = hostingEnvironment ?? throw new ArgumentNullException(nameof(hostingEnvironment));
             Thread.CurrentThread.CurrentCulture = new CultureInfo("es-Us");
         }
 
-        public ViewResult Matrix()
-        {
-            ViewBag.jsversion = js_comon_version;
-            return View();
-        }
 
-        public ViewResult Fur()
-        {
-            ViewBag.jsversion = js_comon_version;
-            return View();
-        }
-
-        public ViewResult Index()
-        {
-            ViewBag.jsversion = js_comon_version;
-            return View();
-        }
-
-        public ViewResult Binary()
-        {
-            ViewBag.jsversion = js_comon_version;
-            return View();
-        }
-        public ViewResult Median()
-        {
-            ViewBag.jsversion = js_comon_version;
-            return View();
-        }
-
-        public ViewResult LogoGen()
-        {
-            return View("vLogoGen");
-        }
         [HttpPost]
-        public async Task<string> LoadImage(ImageFormModel data)
+        public async Task<string> LoadImageMask(ImageFormModel data)
         {
             var size = data.file.Length;
 
