@@ -1,0 +1,46 @@
+﻿
+.layout_body {
+    margin: 0;
+}
+
+.maindiv {
+    margin: 8px;
+    margin-bottom: 100px;
+}
+
+.container img {
+    width: 100%;
+    border-width: 1px;
+}
+
+.container {
+    width: 150px;
+    margin-left: 0px;
+}
+
+.footer {
+    /*position: fixed;*/
+    background: white;
+    height: 50px;
+    border-top: 1px solid grey;
+    bottom: 0;
+    width: 100%;
+}
+
+.footer div {
+    width: 100px;
+    /*border: 1px solid red;*/
+    margin: auto;
+}
+
+.bin_params {
+    border: 1px solid gray;
+    border-radius: 5px;
+    padding: 8px;
+    display: inline-block;
+    margin: 4px;
+}
+
+.result_element {
+    display: inline-block;
+}

@@ -1,0 +1,71 @@
+﻿
+@{
+    ViewData["Title"] = "Index";
+}
+
+
+<h1>Фильтрация по маске</h1>
+Изображение:<input id="file" type="file" onchange="showpreview(this);" />
+<br />
+<br />
+
+<div class="container">
+    <img id="imgpreview" src="">
+</div>
+
+<div>
+    <label id="img_w">w=</label> <br />
+    <label id="img_h">h=</label>
+</div>
+<br />
+<textarea id="matr" cols="40" rows="5">
+0  -1  0 
+-1  4 -1 
+0  -1  0 
+        </textarea>
+<br />
+<br />
+<input id="btn_send" type="button" value="Загрузить" />
+<br />
+<div class="result">
+    <h3 id="progress"></h3> <br />
+    <h3 id="opTime"></h3><br />
+    <img id="resultimg" src="" />
+</div>
+
+
+
+
+@section scripts
+{
+    <script type="text/javascript" src="/Files/js/comon.js?v=@ViewBag.jsversion"></script>
+
+    <script type="text/javascript">
+
+
+        var imagename = "";
+
+        operation_url = "/Main/LoadImage";
+
+        send_data = () => {
+            let data = new FormData();
+            data.append("file", $("#file")[0].files[0]);
+            data.append("matr_str", $("#matr").val());
+            return data;
+        };
+
+        data_sended = (respond) => {
+
+            imagename = respond;
+
+        }
+
+        operation_complete = () => {
+            $("#resultimg").attr("src", imagename);
+        }
+
+
+
+    </script>
+}
+
